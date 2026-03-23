@@ -11,7 +11,7 @@ from app.security.jwt import create_access_token
 router = APIRouter()
 
 @router.post("/login", response_model=Token, summary="Autenticación y generación de JWT")
-def login(db: Session = Depends(get_db), login_data: LoginRequest = None):
+def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     """
     Login endpoint that doesn't use OAuth2 form data
     """

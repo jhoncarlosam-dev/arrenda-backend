@@ -32,11 +32,17 @@ def create_contract(db: Session, contract: ContractCreate, arrendador_id: int):
 
 def update_contract(db: Session, db_contract: Contract, contract_in: ContractUpdate):
     update_data = contract_in.model_dump(exclude_unset=True)
-    
+
     for field in update_data:
         setattr(db_contract, field, update_data[field])
-        
+
     db.add(db_contract)
     db.commit()
     db.refresh(db_contract)
     return db_contract
+
+def delete_contract(db: Session, contract_id: int) -> None:
+    contract = db.query(Contract).filter(Contract.id == contract_id).first()
+    if contract:
+        db.delete(contract)
+        db.commit()

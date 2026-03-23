@@ -2,8 +2,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.models.user import User as UserModel
 from app.schemas.user import UserCreate, User
 from app.services import user_service
+from app.security.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -29,6 +31,7 @@ def create_user(
 def read_user_by_id(
     user_id: int,
     db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ) -> Any:
     """
     Get a specific user by id.
