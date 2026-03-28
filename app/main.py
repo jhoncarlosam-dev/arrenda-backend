@@ -18,11 +18,15 @@ Permite administrar:
 * **Exportación** de recibos en formato PDF y PNG. 📥
 """
 
+_is_dev = settings.ENV != "production"
+
 app = FastAPI(
     title="Arrenda API",
     description=DESCRIPTION,
     version=settings.VERSION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    docs_url="/docs" if _is_dev else None,
+    redoc_url="/redoc" if _is_dev else None,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if _is_dev else None,
 )
 
 # Rate limiting
