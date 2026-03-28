@@ -1,6 +1,6 @@
 # Arrenda API
 
-Backend para la gestión de contratos de arrendamiento, construido con **FastAPI**, **SQLAlchemy** y **MySQL**. Soporta dos roles de usuario: arrendador y arrendatario, con autenticación JWT y exportación de recibos en PDF/PNG.
+Backend para la gestión de contratos de arrendamiento, construido con **FastAPI**, **SQLAlchemy** y **MySQL**. Soporta dos roles de usuario: arrendador y arrendatario, con autenticación JWT, gestión de cuentas por email y exportación de recibos en PDF/PNG.
 
 ---
 
@@ -16,8 +16,9 @@ Backend para la gestión de contratos de arrendamiento, construido con **FastAPI
 | Autenticación | JWT (python-jose) |
 | Hashing | Passlib/bcrypt |
 | Validación | Pydantic 2.0+ |
+| Rate limiting | SlowAPI |
 | Exportación PDF | ReportLab |
-| Exportación PNG | ImgKit + wkhtmltopdf |
+| Exportación PNG | Pillow |
 | Testing | Pytest + HTTPx |
 
 ---
@@ -27,45 +28,50 @@ Backend para la gestión de contratos de arrendamiento, construido con **FastAPI
 ```
 arrenda-backend/
 ├── app/
-│   ├── api/                  # Rutas HTTP
-│   │   ├── auth.py           # Login
-│   │   ├── users.py          # Gestión de usuarios
-│   │   ├── contracts.py      # CRUD de contratos
-│   │   ├── export.py         # Exportación PDF/PNG
-│   │   └── error_handlers.py # Manejo global de errores
+│   ├── api/                    # Rutas HTTP
+│   │   ├── auth.py             # Login
+│   │   ├── users.py            # Gestión de usuarios y cuenta
+│   │   ├── contracts.py        # CRUD de contratos
+│   │   ├── export.py           # Exportación PDF/PNG
+│   │   └── error_handlers.py   # Manejo global de errores
 │   ├── core/
-│   │   └── config.py         # Configuración y variables de entorno
+│   │   ├── config.py           # Configuración y variables de entorno
+│   │   ├── limiter.py          # Rate limiting
+│   │   └── pagination.py       # Utilidades de paginación
 │   ├── db/
-│   │   ├── base.py           # Base declarativa SQLAlchemy
-│   │   └── session.py        # Gestión de sesiones DB
+│   │   ├── base.py             # Base declarativa SQLAlchemy
+│   │   └── session.py          # Gestión de sesiones DB
 │   ├── export/
-│   │   ├── pdf_service.py    # Generación de PDFs
-│   │   └── png_service.py    # Generación de PNGs
+│   │   ├── pdf_service.py      # Generación de PDFs
+│   │   └── png_service.py      # Generación de PNGs
+│   ├── middleware/
+│   │   └── logging.py          # Logging de requests
 │   ├── models/
-│   │   ├── user.py           # Modelo User (roles: ARRENDADOR | ARRENDATARIO)
-│   │   └── contract.py       # Modelo Contract
+│   │   ├── user.py             # Modelo User (roles: ARRENDADOR | ARRENDATARIO)
+│   │   └── contract.py         # Modelo Contract
 │   ├── schemas/
-│   │   ├── user.py           # Schemas de usuario
-│   │   ├── contract.py       # Schemas de contrato
-│   │   └── token.py          # Schemas JWT
+│   │   ├── user.py             # Schemas de usuario
+│   │   ├── contract.py         # Schemas de contrato
+│   │   └── token.py            # Schemas JWT
 │   ├── security/
-│   │   ├── jwt.py            # Creación y verificación de tokens
-│   │   ├── password.py       # Hashing de contraseñas
-│   │   └── dependencies.py   # Dependencias de autenticación y roles
+│   │   ├── jwt.py              # Creación y verificación de tokens
+│   │   ├── password.py         # Hashing de contraseñas
+│   │   ├── tokens.py           # Tokens con propósito (reset, verificación)
+│   │   └── dependencies.py     # Dependencias de autenticación y roles
 │   ├── services/
-│   │   ├── user_service.py   # Lógica de negocio de usuarios
+│   │   ├── user_service.py     # Lógica de negocio de usuarios
 │   │   └── contract_service.py # Lógica de negocio de contratos
 │   ├── utils/
-│   │   └── exceptions.py     # Excepciones personalizadas
-│   └── main.py               # Inicialización de la app FastAPI
-├── migrations/               # Migraciones Alembic
-├── tests/                    # Suite de pruebas
-├── .env.example              # Plantilla de variables de entorno
-├── alembic.ini               # Configuración de Alembic
-├── docker-compose.yml        # Orquestación con Docker
-├── Dockerfile                # Imagen Docker
-├── init_db.py                # Script de inicialización de la DB
-└── requirements.txt          # Dependencias Python
+│   │   └── exceptions.py       # Excepciones personalizadas
+│   └── main.py                 # Inicialización de la app FastAPI
+├── migrations/                 # Migraciones Alembic
+├── tests/                      # Suite de pruebas
+├── .env.example                # Plantilla de variables de entorno
+├── alembic.ini                 # Configuración de Alembic
+├── docker-compose.yml          # Orquestación con Docker
+├── Dockerfile                  # Imagen Docker
+├── init_db.py                  # Script de inicialización de la DB
+└── requirements.txt            # Dependencias Python
 ```
 
 ---
@@ -74,7 +80,6 @@ arrenda-backend/
 
 - Python 3.11+
 - MySQL Server (local o en contenedor)
-- `wkhtmltopdf` instalado y en el PATH (requerido para exportación PNG)
 
 ---
 
@@ -176,7 +181,14 @@ Todos los endpoints tienen el prefijo `/api/v1`.
 | Método | Ruta | Descripción | Acceso |
 |---|---|---|---|
 | `POST` | `/users/` | Registrar nuevo usuario | Público |
+| `GET` | `/users/me` | Obtener perfil propio | Autenticado |
+| `PATCH` | `/users/me` | Actualizar nombre o email | Autenticado |
+| `POST` | `/users/me/password` | Cambiar contraseña | Autenticado |
 | `GET` | `/users/{user_id}` | Obtener usuario por ID | Autenticado |
+| `POST` | `/users/me/verify-email/request` | Solicitar verificación de email | Autenticado |
+| `POST` | `/users/verify-email/confirm` | Confirmar email con token | Público |
+| `POST` | `/users/password-reset/request` | Solicitar restablecimiento de contraseña | Público |
+| `POST` | `/users/password-reset/confirm` | Confirmar nueva contraseña con token | Público |
 
 ### Contratos
 
@@ -186,7 +198,7 @@ Todos los endpoints tienen el prefijo `/api/v1`.
 | `GET` | `/contracts/me` | Listar contratos propios (paginado) | Autenticado |
 | `GET` | `/contracts/{id}` | Obtener contrato por ID | Arrendador o Arrendatario del contrato |
 | `PUT` | `/contracts/{id}` | Actualizar contrato | ARRENDADOR (propietario) |
-| `DELETE` | `/contracts/{id}` | Eliminar contrato | ARRENDADOR (propietario) |
+| `DELETE` | `/contracts/{id}` | Eliminar contrato (soft delete) | ARRENDADOR (propietario) |
 
 ### Exportación de Recibos
 
@@ -208,6 +220,7 @@ Todos los endpoints tienen el prefijo `/api/v1`.
 | `email` | String (unique) | Correo electrónico |
 | `password` | String | Contraseña hasheada (bcrypt) |
 | `role` | Enum | `ARRENDADOR` o `ARRENDATARIO` |
+| `is_verified` | Boolean | Estado de verificación de email |
 | `created_at` | DateTime | Fecha de creación (UTC) |
 
 ### Contract
@@ -223,6 +236,7 @@ Todos los endpoints tienen el prefijo `/api/v1`.
 | `servicios` | Text (nullable) | Servicios incluidos |
 | `clausulas_opcionales` | JSON (nullable) | Cláusulas adicionales |
 | `created_at` | DateTime | Fecha de creación (UTC) |
+| `deleted_at` | DateTime (nullable) | Fecha de eliminación (soft delete) |
 
 ---
 
