@@ -17,6 +17,7 @@ class Contract(Base):
     clausulas_opcionales = Column(JSON, nullable=True)
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    deleted_at = Column(DateTime, nullable=True, default=None)
 
     # Relationships
     arrendador = relationship("User", foreign_keys=[arrendador_id])

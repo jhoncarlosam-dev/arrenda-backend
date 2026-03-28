@@ -1,15 +1,18 @@
-from app.core.config import settings
-from app.db.base import Base
-from app.db.session import engine
+"""
+Database initialisation via Alembic migrations.
 
-def init_db():
-    print(f"Borrando tablas si existen en {settings.DB_NAME}...")
-    # Base.metadata.drop_all(bind=engine)
-    
-    print(f"Creando tablas basadas en modelos en {settings.DB_NAME}...")
-    Base.metadata.create_all(bind=engine)
-    
-    print("¡Base de datos inicializada exitosamente!")
+Run:  python init_db.py
+"""
+from alembic import command
+from alembic.config import Config
+
+
+def init_db() -> None:
+    alembic_cfg = Config("alembic.ini")
+    print("Running Alembic migrations to head...")
+    command.upgrade(alembic_cfg, "head")
+    print("Database initialised successfully.")
+
 
 if __name__ == "__main__":
     init_db()

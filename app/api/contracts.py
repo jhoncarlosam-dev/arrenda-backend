@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -6,6 +6,7 @@ from app.models.user import User, RoleEnum
 from app.security.dependencies import get_current_user, require_role
 from app.schemas.contract import ContractCreate, ContractUpdate, Contract
 from app.services import contract_service
+from app.core.pagination import PaginationParams, Page
 
 router = APIRouter()
 
@@ -24,24 +25,25 @@ def create_contract(
     )
     return contract
 
-@router.get("/me", response_model=List[Contract], summary="Listar mis contratos")
+@router.get("/me", response_model=Page[Contract], summary="Listar mis contratos")
 def list_my_contracts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 100,
+    pagination: PaginationParams = Depends(),
 ) -> Any:
     """
-    List all contracts for the current user.
+    List all contracts for the current user (paginated).
     ARRENDADOR sees contracts they created; ARRENDATARIO sees contracts they are part of.
     """
     if current_user.role.value == RoleEnum.ARRENDADOR.value:
-        return contract_service.get_contracts_by_arrendador(
-            db=db, arrendador_id=current_user.id, skip=skip, limit=limit
+        items, total = contract_service.get_contracts_by_arrendador(
+            db=db, arrendador_id=current_user.id, skip=pagination.skip, limit=pagination.limit
         )
-    return contract_service.get_contracts_by_arrendatario(
-        db=db, arrendatario_id=current_user.id, skip=skip, limit=limit
-    )
+    else:
+        items, total = contract_service.get_contracts_by_arrendatario(
+            db=db, arrendatario_id=current_user.id, skip=pagination.skip, limit=pagination.limit
+        )
+    return Page(items=items, total=total, skip=pagination.skip, limit=pagination.limit)
 
 @router.get("/{id}", response_model=Contract, summary="Obtener contrato por ID")
 def read_contract(

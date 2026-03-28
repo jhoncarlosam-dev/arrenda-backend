@@ -1,12 +1,12 @@
 import io
-import imgkit
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from PIL import Image, ImageDraw, ImageFont
 
 
 def generate_receipt_png(db: Session, receipt_id: int, user_id: int) -> io.BytesIO:
     """
-    Genera un PNG renderizando HTML mediante imgkit (requiere wkhtmltoimage).
+    Genera un PNG del recibo usando Pillow (sin dependencias del sistema).
     Valida que el contrato exista y pertenezca al arrendatario solicitante.
     Retorna un BytesIO listo para StreamingResponse.
     """
@@ -18,52 +18,47 @@ def generate_receipt_png(db: Session, receipt_id: int, user_id: int) -> io.Bytes
     if contract.arrendatario_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this receipt")
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                padding: 40px;
-                color: #333;
-                background-color: #fff;
-            }}
-            .receipt-box {{
-                border: 2px solid #ddd;
-                padding: 20px;
-                border-radius: 8px;
-                max-width: 600px;
-            }}
-            h1 {{
-                color: #2c3e50;
-                border-bottom: 2px solid #3498db;
-                padding-bottom: 10px;
-            }}
-            p {{ margin: 8px 0; }}
-        </style>
-    </head>
-    <body>
-        <div class="receipt-box">
-            <h1>Recibo de Arrendamiento</h1>
-            <p><strong>Contrato ID:</strong> {contract.id}</p>
-            <p><strong>Dirección:</strong> {contract.direccion}</p>
-            <p><strong>Tipo:</strong> {contract.tipo}</p>
-            <p><strong>Valor:</strong> ${contract.valor}</p>
-            {'<p><strong>Servicios:</strong> ' + contract.servicios + '</p>' if contract.servicios else ''}
-        </div>
-    </body>
-    </html>
-    """
+    width, height = 640, 400
+    bg_color = (255, 255, 255)
+    border_color = (221, 221, 221)
+    title_color = (44, 62, 80)
+    text_color = (51, 51, 51)
+    accent_color = (52, 152, 219)
+
+    img = Image.new("RGB", (width, height), bg_color)
+    draw = ImageDraw.Draw(img)
 
     try:
-        options = {'format': 'png', 'encoding': 'UTF-8', 'quiet': ''}
-        img_bytes = imgkit.from_string(html_content, False, options=options)
-        buffer = io.BytesIO(img_bytes)
-        buffer.seek(0)
-        return buffer
-    except OSError as e:
-        raise Exception(
-            "Error al generar PNG. Asegúrese de que wkhtmltopdf/wkhtmltoimage está instalado en el sistema."
-        ) from e
+        font_title = ImageFont.truetype("arial.ttf", 20)
+        font_body = ImageFont.truetype("arial.ttf", 14)
+    except OSError:
+        font_title = ImageFont.load_default()
+        font_body = ImageFont.load_default()
+
+    # Border box
+    draw.rectangle([20, 20, width - 20, height - 20], outline=border_color, width=2)
+
+    # Title
+    draw.text((40, 40), "Recibo de Arrendamiento", font=font_title, fill=title_color)
+    # Accent underline
+    draw.line([40, 68, 400, 68], fill=accent_color, width=2)
+
+    # Body fields
+    lines = [
+        f"Contrato ID:  {contract.id}",
+        f"Dirección:    {contract.direccion}",
+        f"Tipo:         {contract.tipo}",
+        f"Valor:        ${contract.valor}",
+    ]
+    if contract.servicios:
+        lines.append(f"Servicios:    {contract.servicios}")
+
+    y = 90
+    for line in lines:
+        draw.text((40, y), line, font=font_body, fill=text_color)
+        y += 28
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer

@@ -75,7 +75,9 @@ def test_list_my_contracts(client, arrendador, arrendatario):
 
     response = client.get("/api/v1/contracts/me", headers=auth_headers(token))
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    data = response.json()
+    assert data["total"] == 2
+    assert len(data["items"]) == 2
 
 
 def test_update_own_contract(client, arrendador, arrendatario):
